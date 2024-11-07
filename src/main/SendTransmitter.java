@@ -38,6 +38,7 @@ public class SendTransmitter extends Thread {
                 }
             } catch (Exception e) {
                 System.out.println("Erro ao enviar mensagens via multicast: " + e.getMessage());
+                System.out.println("... " + e.getMessage());
             }
         }
     }
