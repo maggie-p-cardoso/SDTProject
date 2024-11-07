@@ -1,4 +1,8 @@
 package main;
+import java.net.DatagramPacket;
+import java.net.InetAddress;
+import java.net.MulticastSocket;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 public class SendTransmitter extends Thread {
@@ -24,8 +28,17 @@ public class SendTransmitter extends Thread {
     private void sendMessages(List<String> messages) {
         if (!messages.isEmpty()) {
             System.out.println("Envio de mensagens: " + messages);
-            // Código para envio das mensagens via multicast
-            // Ou sincronização com outros nós, conforme necessário
+            try (MulticastSocket socket = new MulticastSocket()) {
+                InetAddress group = InetAddress.getByName("230.0.0.0");
+                for (String message : messages) {
+                    byte[] buffer = message.getBytes(StandardCharsets.UTF_8);
+                    DatagramPacket packet = new DatagramPacket(buffer, buffer.length, group, 4446);
+                    socket.send(packet);
+                    System.out.println("Mensagem enviada via multicast: " + message);
+                }
+            } catch (Exception e) {
+                System.out.println("Erro ao enviar mensagens via multicast: " + e.getMessage());
+            }
         }
     }
 }
