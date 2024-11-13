@@ -1,17 +1,43 @@
-import main.DistributedNode;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Main {
     public static void main(String[] args) {
-        // Lista de nós para sincronização (endereços IP ou hostnames)
-        String[] otherNodes = {"localhost"};
+        // Defina o número de nós que você quer criar
+        int numNodes = 4;
 
-        // Criação do nó líder
-        DistributedNode leaderNode = new DistributedNode("Node1", true, "Conteúdo inicial do documento", otherNodes, 8080);
+        // Lista para armazenar e gerenciar as threads dos nós
+        List<Thread> nodeThreads = new ArrayList<>();
 
-        // Criação de um nó seguidor
-        //DistributedNode followerNode = new DistributedNode("Node2", false, "Conteúdo inicial do documento", otherNodes, 8081);
+        for (int i = 1; i <= numNodes; i++) {
+            // Cria um ID único para cada nó (Node1, Node2, etc.)
+            String nodeId = "Node" + i;
 
-        // Sincronização inicial do documento (para testar o envio de atualizações)
-        leaderNode.updateDocument("Atualização de conteúdo pelo líder.");
+            // Define o primeiro nó como líder
+            boolean isLider = (i == 1);
+
+            // Cria o elemento com o ID e se é líder ou não
+            Elemento elemento = new Elemento(nodeId, isLider);
+
+            // Lista de outros nós (inicialmente vazia)
+            List<String> otherNodes = new ArrayList<>();
+
+            // Cria uma instância de DistributedNode
+            DistributedNode node = new DistributedNode(elemento, "...uma frase qualquer...", otherNodes);
+
+            // Inicia o nó em uma nova thread
+            Thread nodeThread = new Thread(node::start);
+            nodeThreads.add(nodeThread);
+            nodeThread.start();
+        }
+
+        // Opcional: Espera que todas as threads terminem (para testes e encerramento do programa)
+        for (Thread thread : nodeThreads) {
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
     }
 }
