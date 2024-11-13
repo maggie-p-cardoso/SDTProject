@@ -22,7 +22,7 @@ public class Main {
             // Lista de outros nós (inicialmente vazia)
             List<String> otherNodes = new ArrayList<>();
 
-            // Cria uma instância de DistributedNode
+            // Instância de DistributedNode
             DistributedNode node = new DistributedNode(elemento, "...uma frase qualquer...", otherNodes);
 
             // Inicia o nó em uma nova thread
