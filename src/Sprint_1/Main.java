@@ -1,3 +1,5 @@
+package Sprint_1;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,7 +13,7 @@ public class Main {
 
         for (int i = 1; i <= numNodes; i++) {
             // Cria um ID único para cada nó (Node1, Node2, etc.)
-            String nodeId = "Node" + i;
+            String nodeId = "Sprint_2.Node" + i;
 
             // Define o primeiro nó como líder
             boolean isLider = (i == 1);
@@ -22,7 +24,7 @@ public class Main {
             // Lista de outros nós (inicialmente vazia)
             List<String> otherNodes = new ArrayList<>();
 
-            // Instância de DistributedNode
+            // Instância de Sprint_1.DistributedNode
             DistributedNode node = new DistributedNode(elemento, "...uma frase qualquer...", otherNodes);
 
             // Inicia o nó em uma nova thread

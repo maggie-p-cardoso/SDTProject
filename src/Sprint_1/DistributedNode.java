@@ -1,3 +1,5 @@
+package Sprint_1;
+
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
@@ -7,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class DistributedNode {
-    private final Elemento elemento; // Usando Elemento para representar o nó
+    private final Elemento elemento; // Usando Sprint_1.Elemento para representar o nó
     private String documentContent;
     private List<String> otherNodes;
     private List<String> messageList;
