@@ -6,19 +6,30 @@ import java.rmi.registry.Registry;
 public class ServerSetup {
     public static void main(String[] args) {
         try {
-            Registry registry = LocateRegistry.createRegistry(1099);
-            Leader leader = new Leader();
-            registry.rebind("Sprint_2.Leader", leader);
+            // Configuração do líder e registro no RMI
+            Registry registry = LocateRegistry.createRegistry(1099); // Cria o registo RMI com a porta 1099
+            Leader leader = new Leader(); // Criação de uma instância do Leader, permitindo implementar os metodos que o cliente e o nó vão usar
+            registry.rebind("Sprint_2.Leader", leader); // Regista o objeto Leader no registro RMI
 
-            Thread node1 = new Thread(new Node("Node1"));
-            Thread node2 = new Thread(new Node("Node2"));
-            Thread node3 = new Thread(new Node("Node3"));
+            // Iniciar os nós como processos
+            startNodeProcess("Node1");
+            startNodeProcess("Node2");
+            startNodeProcess("Node3");
 
-            node1.start();
-            node2.start();
-            node3.start();
+            System.out.println("Servidor configurado e nós iniciados como processos separados.");
+            System.out.println("");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
-            System.out.println("Servidor configurado e pronto para enviar atualizações.");
+    // Iniciação de cada nó como um processo separado
+    private static void startNodeProcess(String nodeId) {
+        try {
+            ProcessBuilder processBuilder = new ProcessBuilder(
+                    "java", "-cp", "out/production/SDT_pv22458", "Sprint_2.NodeMain", nodeId);
+            processBuilder.inheritIO(); // Permite visualizar a saída do processo no terminal
+            processBuilder.start();
         } catch (Exception e) {
             e.printStackTrace();
         }

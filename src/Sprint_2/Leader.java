@@ -9,14 +9,34 @@ import java.util.HashSet;
 import java.util.Set;
 
 public class Leader extends UnicastRemoteObject implements SystemInterface {
-    private static final String MULTICAST_ADDRESS = "230.0.0.0";
-    private static final int PORT = 4446;
-    private Set<String> ackNodes = new HashSet<>();
+    private static final String MULTICAST_ADDRESS = "230.0.0.0"; // Endereço IP do multicast para enviar mensagens para os nós
+    private static final int PORT = 4446; // Porta para qual as mensagens serão enviadas
+    private String conteudoAtual = "Conteúdo inicial do documento";
+    private Set<String> ackNodes = new HashSet<>(); // Armazena os ids dos nós que vão enviar ACKS
     private int totalNodes = 3; // Número total de nós
-    private boolean atualizacaoConfirmada = false; // Controle de confirmação
+    private boolean atualizacaoConfirmada = false; // Variável que controla a confirmação dos nós
 
+    // Construtor do Leader
     public Leader() throws RemoteException {
         super();
+    }
+
+    // Verifica se recebeu o heartbeat dos nós
+    public void verificarHeartbeats(String nodeId) throws RemoteException {
+        if (!atualizacaoConfirmada) {
+            System.out.println("Líder recebeu HEARTBEAT do nó: " + nodeId);
+            ackNodes.add(nodeId); // Armazena os nós que enviaram resposta
+
+            // Verificar se todos os nós enviaram HEARTBEAT
+            if (ackNodes.size() >= totalNodes) {
+                System.out.println("Todos os nós responderam ao HEARTBEAT");
+
+                atualizacaoConfirmada = true;
+                ackNodes.clear(); // Limpa os ACKs
+            }
+        } else {
+            System.out.println("Aguardando a resposta dos heartbeats dos outros nós.");
+        }
     }
 
     // Cliente solicita uma atualização via RMI
@@ -26,7 +46,7 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
             System.out.println("Líder recebeu mensagem do cliente: " + mensagem);
             enviarAtualizacaoParaNos(mensagem);
             atualizacaoConfirmada = false; // Iniciar nova atualização
-            ackNodes.clear(); // Resetar o conjunto de ACKs recebidos
+            ackNodes.clear(); // Limpa o conjunto de ACKs recebidos
         } else {
             System.out.println("Uma atualização já está em progresso. Aguarde a finalização.");
         }
@@ -42,7 +62,7 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
             socket.send(packet);
             System.out.println("Líder enviou atualização via multicast: " + mensagem);
             socket.close();
-            atualizacaoConfirmada = false; // Resetar confirmação
+            atualizacaoConfirmada = false;
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -57,8 +77,8 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
             System.out.println("Líder recebeu ACK do nó: " + nodeId);
 
             // Verificar se todos os nós enviaram o ACK
-            if (ackNodes.size() == totalNodes) {
-                System.out.println("Todos os nós confirmaram a atualização. Enviando commit...");
+            if (ackNodes.size() > totalNodes / 2) {
+                System.out.println("A maioria dos nós confirmaram a atualização. Enviando commit...");
                 enviarCommitParaNos();
                 atualizacaoConfirmada = true; // Marcar atualização como confirmada
                 ackNodes.clear(); // Limpar os ACKs para a próxima atualização
@@ -76,9 +96,16 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length, group, PORT);
             socket.send(packet);
             System.out.println("Líder enviou o commit via multicast.");
-            socket.close();
+           atualizacaoConfirmada = true;
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    // Envia a lista das atualizações ao novo nó que se juntou
+    @Override
+    public String solicitarListaAtualizacoes(String nodeId) throws  RemoteException {
+        System.out.println("Lider recebeu solicitação da sincronização do nó:" + nodeId);
+        return  conteudoAtual;
     }
 }
