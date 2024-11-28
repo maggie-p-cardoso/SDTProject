@@ -5,7 +5,6 @@ import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
@@ -16,10 +15,8 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
     private Map<Integer, String> documentosPendentes = new HashMap<>();   // ID -> Documento Pendente
 
     private Set<String> ackNodes = new HashSet<>(); // Armazena os ids dos nós que vão enviar ACKS
-    private Map<String, Long> lastHeartbeatTimes = new HashMap<>(); // Armazenar o último tempo de heartbeat de cada nó
     private int totalNodes = 3; // Número total de nós
     private boolean atualizacaoConfirmada = false; // Variável que controla a confirmação dos nós
-    private static final long MAX_INACTIVITY_TIME = 10000; // 10 segundos de inatividade máxima
 
     // Construtor do Leader
     public Leader() throws RemoteException {
@@ -51,44 +48,18 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
             System.out.println("Documento com ID=" + docId + " já foi atualizado.");
         }
     }
-
     @Override
     public void verificarHeartbeats(String nodeId) throws RemoteException {
-        long currentTime = System.currentTimeMillis();
-        lastHeartbeatTimes.put(nodeId, currentTime); // Atualiza o último tempo de heartbeat do nó
-
         System.out.println("Líder recebeu HEARTBEAT do nó: " + nodeId);
+        ackNodes.add(nodeId); // Armazena o nó que enviou o HEARTBEAT
 
-        // Verifica se o nó está ativo ou não
-        removerNodosInativos();
-
-        ackNodes.add(nodeId);
-
+        // Verifica se todos os nós enviaram HEARTBEAT
         if (ackNodes.size() >= totalNodes) {
             System.out.println("Todos os nós enviaram HEARTBEAT. Atualização confirmada.");
             atualizacaoConfirmada = true;
             ackNodes.clear(); // Limpa os ACKs para a próxima rodada de atualizações
         } else {
             System.out.println("Aguardando mais HEARTBEATs. Total recebido: " + ackNodes.size());
-        }
-    }
-
-    // Método para remover nós inativos
-    private void removerNodosInativos() {
-        long currentTime = System.currentTimeMillis();
-        Iterator<Map.Entry<String, Long>> iterator = lastHeartbeatTimes.entrySet().iterator();
-
-        while (iterator.hasNext()) {
-            Map.Entry<String, Long> entry = iterator.next();
-            String nodeId = entry.getKey();
-            long lastHeartbeatTime = entry.getValue();
-
-            // Se o nó estiver inativo há mais de MAX_INACTIVITY_TIME (ex: 10 segundos), removê-lo
-            if (currentTime - lastHeartbeatTime > MAX_INACTIVITY_TIME) {
-                System.out.println("Nó " + nodeId + " removido por inatividade.");
-                iterator.remove(); // Remove o nó do mapa de heartbeats
-                ackNodes.remove(nodeId); // Remove o nó do conjunto de ACKs também
-            }
         }
     }
 

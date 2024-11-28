@@ -11,6 +11,8 @@ public class Client {
 
             while (true) {
                 limparTela(); // Limpa a tela antes de exibir o menu
+                limparTela();
+                // Exibe o menu para o usuário
                 System.out.println("Bem-vindo ao Cliente. Escolha uma opção:");
                 System.out.println("1 - Enviar uma nova atualização ao líder");
                 System.out.println("2 - Listar documentos atualizados no líder");

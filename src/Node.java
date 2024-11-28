@@ -49,37 +49,22 @@ public class Node implements Runnable {
         }
     }
 
-    private void enviarHeartbeat() {
-        while (true) {
-            try {
-                leader.verificarHeartbeats(id); // Envia o heartbeat para o líder
-                Thread.sleep(5000); // Envia heartbeat a cada 5 segundos
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
     public void run() {
-        // O nó já participa do multicast, agora também envia heartbeats
-        Thread heartbeatThread = new Thread(this::enviarHeartbeat);
-        heartbeatThread.start();
-
         try (MulticastSocket socket = new MulticastSocket(PORT)) {
             InetAddress group = InetAddress.getByName(MULTICAST_ADDRESS);
             socket.joinGroup(group);
+
             System.out.println("Nó " + id + " entrou no grupo multicast e está aguardando atualizações...");
 
-            // Sincroniza com o líder ao iniciar
-            sincronizarComLider();
+            sincronizarComLider(); // Sincroniza com o líder ao inicializar
 
             while (true) {
                 byte[] buffer = new byte[256];
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 socket.receive(packet);
+
                 String mensagem = new String(packet.getData(), 0, packet.getLength());
 
-                // Processar as mensagens recebidas
                 if (mensagem.startsWith("PENDENTES;")) {
                     processarPendentes(mensagem);
                 } else if (mensagem.equals("COMMIT")) {
@@ -127,11 +112,15 @@ public class Node implements Runnable {
         for (int docId : documentosPendentes.keySet()) {
             String conteudo = documentosPendentes.get(docId);
             documentosAtuais.put(docId, conteudo); // Move para a lista de documentos atuais
-            System.out.println("Atualizado -> Documento ID=" + docId + ", Conteúdo=\"" + conteudo + "\"");
+            //1 System.out.println("Atualizado -> Documento ID=" + docId + ", Conteúdo=\"" + conteudo + "\"");
         }
 
         // Limpa a lista de documentos pendentes
         documentosPendentes.clear();
         mensagens.add("Nó " + id + " aplicou o COMMIT e atualizou seus documentos.");
+
+
+
     }
+
 }

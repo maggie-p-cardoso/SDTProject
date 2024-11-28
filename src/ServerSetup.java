@@ -42,6 +42,7 @@ public class ServerSetup {
 
             System.out.println("Processo do nó " + nodeId + " iniciado.");
         } catch (Exception e) {
+
             System.err.println("Erro ao iniciar o processo do nó " + nodeId + ":");
             e.printStackTrace();
         }
