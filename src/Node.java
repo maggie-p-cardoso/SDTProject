@@ -5,95 +5,85 @@ import java.rmi.Naming;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class Node implements Runnable {
     private static final String MULTICAST_ADDRESS = "230.0.0.0"; // Endereço multicast
     private static final int PORT = 4446; // Porta do endereço multicast
     private String id; // ID único de cada nó
-    private List<String> mensagens = new ArrayList<>(); // Lista de mensagens
-    private String conteudoAtual = "Conteúdo inicial do documento";
-    private String conteudoPendente; // Conteúdo pendente que será aplicado após o commit
-    private SystemInterface leader; // Referência do objeto Leader, obtido através de RMI
-    private HashMap<String, String> mensagensNaoConfirmadas = new HashMap<>();
-    private boolean atualizacaoConfirmada = false;
 
+    private List<String> mensagens = new ArrayList<>(); // Histórico de mensagens do nó
+    private HashMap<Integer, String> documentosPendentes = new HashMap<>(); // Documentos pendentes no nó
+    private HashMap<Integer, String> documentosAtuais = new HashMap<>(); // Documentos confirmados no nó
+    private SystemInterface leader; // Referência do objeto Leader, obtido através de RMI
 
     public Node(String id) {
         this.id = id;
         try {
             leader = (SystemInterface) Naming.lookup("rmi://localhost/Leader");
-            // startHeartbeatReceiver(); // Inicia recepção de heartbeats
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    // Sincroniza o nó com o conteúdo mais recente do Leader
-    private void sincronizarcomLider() {
+    // Sincroniza o nó com o conteúdo mais recente do líder
+    private void sincronizarComLider() {
         try {
-            String atualizacoesPendentes = leader.solicitarListaAtualizacoes(id); // Usa o metodo remoto SolicitarListaAtualizações para obter as atualizações mais recentes
-            if (atualizacoesPendentes != null && !atualizacoesPendentes.isEmpty()) {
-                conteudoAtual = atualizacoesPendentes;
-                System.out.println("Nó " + id + " " + "sincronizou com as informações mais recentes: " + conteudoAtual);
+            String atualizacoes = leader.solicitarListaAtualizacoes(id); // Solicita lista de documentos atuais do líder
+            if (atualizacoes != null && !atualizacoes.isEmpty()) {
+                String[] docs = atualizacoes.split(";"); // Formato esperado: "ID1:Conteudo1;ID2:Conteudo2;..."
+                for (String doc : docs) {
+                    String[] docInfo = doc.split(":");
+                    if (docInfo.length == 2) {
+                        int docId = Integer.parseInt(docInfo[0]);
+                        String conteudo = docInfo[1];
+                        documentosAtuais.put(docId, conteudo); // Atualiza a lista de documentos atuais
+                    }
+                }
+                // Registra no histórico de mensagens
+                mensagens.add("Nó " + id + " sincronizou com o líder às " + System.currentTimeMillis());
+                System.out.println("Nó " + id + " sincronizou com o líder.");
             }
-
-        } catch (Exception e ) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
+    private void enviarHeartbeat() {
+        while (true) {
+            try {
+                leader.verificarHeartbeats(id); // Envia o heartbeat para o líder
+                Thread.sleep(5000); // Envia heartbeat a cada 5 segundos
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
 
     public void run() {
+        // O nó já participa do multicast, agora também envia heartbeats
+        Thread heartbeatThread = new Thread(this::enviarHeartbeat);
+        heartbeatThread.start();
+
         try (MulticastSocket socket = new MulticastSocket(PORT)) {
             InetAddress group = InetAddress.getByName(MULTICAST_ADDRESS);
             socket.joinGroup(group);
-
             System.out.println("Nó " + id + " entrou no grupo multicast e está aguardando atualizações...");
 
-            sincronizarcomLider(); // Sincroniza com o leader
+            // Sincroniza com o líder ao iniciar
+            sincronizarComLider();
 
             while (true) {
                 byte[] buffer = new byte[256];
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 socket.receive(packet);
-
                 String mensagem = new String(packet.getData(), 0, packet.getLength());
 
-                // Faz a verificação para saber se recebeu o heartbeat do lider
-                if (!atualizacaoConfirmada) {
-                    System.out.println("Nó " + id + " recebeu HEARTBEAT do líder.");
-                    try {
-                        if (id.equals("Node3")) {
-                            Thread.sleep(5000);
-                        }
-                        leader.verificarHeartbeats(id);
-                        System.out.println("Nó " + id + " enviou resposta do HEARTBEAT");
-                    } catch (Exception e) {
-                        System.err.println("Erro ao enviar resposta do HEARTBEAT para o líder: " + e.getMessage());
-                    }
-                }
-
-                // Faz o commit
-                if (mensagem.equals("COMMIT")) {
-                    // Recebeu o commit, aplica o conteúdo pendente
-                    System.out.println("Nó " + id + " recebeu o commit. Aplicando atualização...");
-                    conteudoAtual = conteudoPendente;
-                    mensagens.add(conteudoPendente); // Adiciona a nova mensagem à lista
-                    System.out.println("Nó " + id + " - Conteúdo atualizado para: " + conteudoAtual);
-                    mensagensNaoConfirmadas.put(conteudoPendente, "Confirmada");
-                    imprimirMensagensNaoConfirmadas(); //
-
-                } else {
-
-                    // Recebeu a atualização, mas aguarda o commit
-                    System.out.println("Nó " + id + " recebeu atualização: " + mensagem);
-                    System.out.println("Nó " + id + " - Conteúdo antes da atualização: " + conteudoAtual);
-                    conteudoPendente = mensagem; // Guarda a atualização pendente
-                    mensagensNaoConfirmadas.put(mensagem, "Pendente");
-                    imprimirMensagensNaoConfirmadas();
-
-                    // Envia ACK para o líder indicando que recebeu a atualização
-                    leader.enviarACK(id);
+                // Processar as mensagens recebidas
+                if (mensagem.startsWith("PENDENTES;")) {
+                    processarPendentes(mensagem);
+                } else if (mensagem.equals("COMMIT")) {
+                    aplicarCommit();
                 }
             }
         } catch (Exception e) {
@@ -101,11 +91,47 @@ public class Node implements Runnable {
         }
     }
 
-    // Serve de auxilio para verificar o estado das mensagens (Com commit ou estão pendentes)
-    private void imprimirMensagensNaoConfirmadas() {
-        System.out.println("Estado atual das mensagens não confirmadas para o nó:" + id + ";");
-        for (String mensagem : mensagensNaoConfirmadas.keySet()) {
-            System.out.println("Mensagem: " + mensagem + " - Status: " + mensagensNaoConfirmadas.get(mensagem));
+    // Processa a mensagem de documentos pendentes enviada pelo líder
+    private void processarPendentes(String mensagem) {
+        System.out.println("Nó " + id + " recebeu heartbeat com documentos pendentes.");
+        mensagens.add("Nó " + id + " recebeu atualização pendente às " + System.currentTimeMillis());
+
+        String[] partes = mensagem.split(";");
+        for (int i = 1; i < partes.length; i++) { // Ignora a tag "PENDENTES"
+            String[] docInfo = partes[i].split(":");
+            if (docInfo.length == 2) {
+                int docId = Integer.parseInt(docInfo[0]);
+                String conteudo = docInfo[1];
+                if (!documentosPendentes.containsKey(docId) && !documentosAtuais.containsKey(docId)) {
+                    documentosPendentes.put(docId, conteudo);
+                    System.out.println("Nó " + id + " adicionou documento pendente: ID=" + docId + ", Conteúdo=" + conteudo);
+                }
+            }
         }
+
+        // Envia ACK ao líder para confirmar o recebimento
+        try {
+            leader.enviarACK(id);
+            mensagens.add("Nó " + id + " enviou ACK ao líder.");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Aplica o commit, movendo os documentos pendentes para os atuais
+    private void aplicarCommit() {
+        System.out.println("Nó " + id + " recebeu o COMMIT. Aplicando atualizações...");
+        mensagens.add("Nó " + id + " recebeu COMMIT às " + System.currentTimeMillis());
+
+        // Atualiza os documentos pendentes e move para documentos atuais
+        for (int docId : documentosPendentes.keySet()) {
+            String conteudo = documentosPendentes.get(docId);
+            documentosAtuais.put(docId, conteudo); // Move para a lista de documentos atuais
+            System.out.println("Atualizado -> Documento ID=" + docId + ", Conteúdo=\"" + conteudo + "\"");
+        }
+
+        // Limpa a lista de documentos pendentes
+        documentosPendentes.clear();
+        mensagens.add("Nó " + id + " aplicou o COMMIT e atualizou seus documentos.");
     }
 }
