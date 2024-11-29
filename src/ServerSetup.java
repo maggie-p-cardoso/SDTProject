@@ -18,6 +18,8 @@ public class ServerSetup {
             for (int i = 1; i <= totalNodes; i++) {
                 String nodeId = "Node" + i;
                 startNodeProcess(nodeId);
+                leader.registrarNo(nodeId); // Registra o nó no líder para gerenciamento
+                System.out.println("Nó " + nodeId + "Registrado no lider");
             }
 
             System.out.println("Servidor configurado com sucesso e nós iniciados como processos separados.");
@@ -42,7 +44,6 @@ public class ServerSetup {
 
             System.out.println("Processo do nó " + nodeId + " iniciado.");
         } catch (Exception e) {
-
             System.err.println("Erro ao iniciar o processo do nó " + nodeId + ":");
             e.printStackTrace();
         }

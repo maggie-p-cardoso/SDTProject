@@ -5,7 +5,6 @@ import java.rmi.Naming;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public class Node implements Runnable {
     private static final String MULTICAST_ADDRESS = "230.0.0.0"; // Endereço multicast
@@ -16,6 +15,9 @@ public class Node implements Runnable {
     private HashMap<Integer, String> documentosPendentes = new HashMap<>(); // Documentos pendentes no nó
     private HashMap<Integer, String> documentosAtuais = new HashMap<>(); // Documentos confirmados no nó
     private SystemInterface leader; // Referência do objeto Leader, obtido através de RMI
+
+    private volatile boolean ativo = true; // Sinalizador para controlar o estado do nó
+    private volatile boolean simularFalha = false; // Sinalizador para simular uma falha no nó
 
     public Node(String id) {
         this.id = id;
@@ -58,7 +60,12 @@ public class Node implements Runnable {
 
             sincronizarComLider(); // Sincroniza com o líder ao inicializar
 
-            while (true) {
+            while (ativo) {
+                if (simularFalha) {
+                    System.out.println("Nó " + id + " está simulando falha e atrasará a resposta de heartbeat.");
+                    Thread.sleep(35000); // Atraso proposital para simular falha (35 segundos)
+                }
+
                 byte[] buffer = new byte[256];
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 socket.receive(packet);
@@ -69,6 +76,8 @@ public class Node implements Runnable {
                     processarPendentes(mensagem);
                 } else if (mensagem.equals("COMMIT")) {
                     aplicarCommit();
+                } else if (mensagem.equals("SHUTDOWN:" + id)) {
+                    desligarNo(socket, group);
                 }
             }
         } catch (Exception e) {
@@ -112,15 +121,31 @@ public class Node implements Runnable {
         for (int docId : documentosPendentes.keySet()) {
             String conteudo = documentosPendentes.get(docId);
             documentosAtuais.put(docId, conteudo); // Move para a lista de documentos atuais
-            //1 System.out.println("Atualizado -> Documento ID=" + docId + ", Conteúdo=\"" + conteudo + "\"");
         }
 
         // Limpa a lista de documentos pendentes
         documentosPendentes.clear();
         mensagens.add("Nó " + id + " aplicou o COMMIT e atualizou seus documentos.");
-
-
-
     }
 
+    // Método para simular uma falha no nó, atrasando sua resposta
+    public void simularFalha() {
+        this.simularFalha = true;
+    }
+
+    // Método para desligar o nó
+    private void desligarNo(MulticastSocket socket, InetAddress group) {
+        System.out.println("Nó " + id + " está sendo desligado conforme solicitado pelo líder.");
+        ativo = false; // Sinaliza para o loop principal encerrar
+
+        try {
+            socket.leaveGroup(group); // Sai do grupo multicast
+            socket.close(); // Fecha o socket
+            System.out.println("Nó " + id + " saiu do grupo multicast e foi desligado.");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        System.exit(0); // Encerra o processo do nó
+    }
 }

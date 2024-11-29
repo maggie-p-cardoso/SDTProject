@@ -2,7 +2,6 @@ import java.rmi.Remote;
 import java.rmi.RemoteException;
 
 public interface SystemInterface extends Remote {
-
     /**
      * Envia uma nova mensagem (documento) do cliente para o líder.
      * Formato esperado: "ID;Conteúdo"
@@ -31,4 +30,16 @@ public interface SystemInterface extends Remote {
      * Retorna uma descrição detalhada dos documentos armazenados.
      */
     String listarDocumentosAtualizados() throws RemoteException; // Nós ou cliente para líder
+
+    /**
+
+     * Solicita a simulação de falha em um nó específico.
+     */
+    void simularFalhaNode(String nodeId) throws RemoteException; // Cliente para líder
+
+    /**
+     * Registra um nó no líder para permitir seu gerenciamento.
+     */
+    void registrarNo(String nodeId) throws RemoteException; // ServerSetup para líder
+
 }

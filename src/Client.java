@@ -11,12 +11,12 @@ public class Client {
 
             while (true) {
                 limparTela(); // Limpa a tela antes de exibir o menu
-                limparTela();
                 // Exibe o menu para o usuário
                 System.out.println("Bem-vindo ao Cliente. Escolha uma opção:");
                 System.out.println("1 - Enviar uma nova atualização ao líder");
                 System.out.println("2 - Listar documentos atualizados no líder");
-                System.out.println("3 - Sair");
+                System.out.println("3 - Simular falha em um nó");
+                System.out.println("4 - Sair");
                 System.out.print("Opção: ");
 
                 int opcao = scanner.nextInt();
@@ -48,7 +48,19 @@ public class Client {
                         pausar(); // Pausar antes de retornar ao menu
                         break;
 
+
+
                     case 3:
+                        // Solicitar a simulação de falha em um nó
+                        limparTela();
+                        System.out.print("Digite o ID do nó para simular falha: ");
+                        String falhaNodeId = scanner.nextLine();
+                        leader.simularFalhaNode(falhaNodeId);
+                        System.out.println("\nCliente: Solicitada simulação de falha no nó: " + falhaNodeId);
+                        pausar(); // Pausar antes de retornar ao menu
+                        break;
+
+                    case 4:
                         // Sair do programa
                         System.out.println("Encerrando o cliente...");
                         scanner.close();

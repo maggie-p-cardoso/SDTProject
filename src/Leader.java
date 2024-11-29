@@ -7,16 +7,23 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.Timer;
+import java.util.TimerTask;
+
+
+
+
 
 public class Leader extends UnicastRemoteObject implements SystemInterface {
     private static final String MULTICAST_ADDRESS = "230.0.0.0"; // Endereço IP do multicast para enviar mensagens para os nós
     private static final int PORT = 4446; // Porta para qual as mensagens serão enviadas
     private Map<Integer, String> documentosAtualizados = new HashMap<>(); // ID -> Documento Atualizado
     private Map<Integer, String> documentosPendentes = new HashMap<>();   // ID -> Documento Pendente
-
     private Set<String> ackNodes = new HashSet<>(); // Armazena os ids dos nós que vão enviar ACKS
     private int totalNodes = 3; // Número total de nós
     private boolean atualizacaoConfirmada = false; // Variável que controla a confirmação dos nós
+    private Map<String, Timer> nodeTimers = new HashMap<>(); // Armazena temporizadores para cada nó
+    private Set<String> nodesRegistrados = new HashSet<>(); // Conjunto de nós registrados
 
     // Construtor do Leader
     public Leader() throws RemoteException {
@@ -25,9 +32,57 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
         System.out.println("Líder inicializado com o documento ID=1, Conteúdo='documento inicial'.");
     }
 
-    // Cliente solicita uma atualização via RMI
     @Override
-    public synchronized void enviarMensagem(String mensagem) throws RemoteException {
+    public void simularFalhaNode(String nodeId) throws RemoteException {
+        System.out.println("Líder: Solicitada simulação de falha no nó: " + nodeId);
+        if (nodesRegistrados.contains(nodeId)) {
+            System.out.println("Simulando falha no nó: " + nodeId);
+            // Reinicia o temporizador do nó para simular uma falha atrasando o envio do heartbeat
+            if (nodeTimers.containsKey(nodeId)) {
+                nodeTimers.get(nodeId).cancel();
+            }
+            Timer timer = new Timer();
+            timer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    System.out.println("Nó " + nodeId + " não respondeu a tempo. Removendo-o.");
+                    removerNo(nodeId);
+                    enviarMensagemShutdown(nodeId);
+                }
+            }, 35000); // Timeout de 35 segundos para simular a falha
+
+            nodeTimers.put(nodeId, timer);
+        } else {
+            System.out.println("Nó " + nodeId + " não encontrado.");
+        }
+    }
+
+    @Override
+    public void registrarNo(String nodeId) throws RemoteException {
+        if (!nodesRegistrados.contains(nodeId)) {
+            nodesRegistrados.add(nodeId);
+            System.out.println("Líder: Nó registrado com sucesso: " + nodeId);
+        } else {
+            System.out.println("Líder: O nó " + nodeId + " já está registrado.");
+        }
+    }
+
+
+    // Método para remover um nó do sistema
+    private void removerNo(String nodeId) {
+        nodesRegistrados.remove(nodeId);
+        nodeTimers.remove(nodeId);
+        System.out.println("Líder: Nó removido do sistema: " + nodeId);
+    }
+
+    // Método para enviar mensagem de desligamento para um nó
+    private void enviarMensagemShutdown(String nodeId) {
+        System.out.println("Líder: Enviando mensagem de desligamento para o nó: " + nodeId);
+        // Lógica para enviar a mensagem de desligamento
+    }
+
+    @Override
+    public void enviarMensagem(String mensagem) throws RemoteException {
         String[] parts = mensagem.split(";", 2); // Separar "ID;Conteúdo"
         if (parts.length < 2) {
             System.out.println("Mensagem inválida recebida.");
@@ -48,9 +103,42 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
             System.out.println("Documento com ID=" + docId + " já foi atualizado.");
         }
     }
+
+
+    @Override
+    public String listarDocumentosAtualizados() throws RemoteException {
+        StringBuilder builder = new StringBuilder();
+
+        documentosAtualizados.forEach((id, conteudo) ->
+                builder.append("ID: ").append(id).append(", Conteúdo: ").append(conteudo).append("\n"));
+        return builder.toString();
+    }
+
     @Override
     public void verificarHeartbeats(String nodeId) throws RemoteException {
+        if (!nodesRegistrados.contains(nodeId)) {
+            System.out.println("Heartbeat recebido de nó não registrado: " + nodeId + ". Ignorando.");
+            return;
+        }
+
         System.out.println("Líder recebeu HEARTBEAT do nó: " + nodeId);
+
+        // Reinicia o timer do nó sempre que receber um heartbeat
+        if (nodeTimers.containsKey(nodeId)) {
+            nodeTimers.get(nodeId).cancel();
+        }
+
+        Timer timer = new Timer();
+        timer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                System.out.println("Nó " + nodeId + " não respondeu a tempo. Removendo-o.");
+                removerNo(nodeId);
+                enviarMensagemShutdown(nodeId);
+            }
+        }, 30000); // Timeout de 30 segundos
+
+        nodeTimers.put(nodeId, timer);
         ackNodes.add(nodeId); // Armazena o nó que enviou o HEARTBEAT
 
         // Verifica se todos os nós enviaram HEARTBEAT
@@ -62,6 +150,7 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
             System.out.println("Aguardando mais HEARTBEATs. Total recebido: " + ackNodes.size());
         }
     }
+
 
     // Envia atualização para os nós via multicast
     private void enviarAtualizacaoParaNos() {
@@ -84,6 +173,7 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
             e.printStackTrace();
         }
     }
+
 
     // Recebe ACKs dos nós via RMI
     @Override
@@ -139,12 +229,4 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
         return listaAtualizada.toString();
     }
 
-    @Override
-    public synchronized String listarDocumentosAtualizados() throws RemoteException {
-        StringBuilder builder = new StringBuilder();
-
-        documentosAtualizados.forEach((id, conteudo) ->
-                builder.append("ID: ").append(id).append(", Conteúdo: ").append(conteudo).append("\n"));
-        return builder.toString();
-    }
 }
