@@ -10,75 +10,61 @@ import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 
-
-
-
-
 public class Leader extends UnicastRemoteObject implements SystemInterface {
-    private static final String MULTICAST_ADDRESS = "230.0.0.0"; // Endereço IP do multicast para enviar mensagens para os nós
-    private static final int PORT = 4446; // Porta para qual as mensagens serão enviadas
-    private Map<Integer, String> documentosAtualizados = new HashMap<>(); // ID -> Documento Atualizado
-    private Map<Integer, String> documentosPendentes = new HashMap<>();   // ID -> Documento Pendente
-    private Set<String> ackNodes = new HashSet<>(); // Armazena os ids dos nós que vão enviar ACKS
-    private int totalNodes = 3; // Número total de nós
-    private boolean atualizacaoConfirmada = false; // Variável que controla a confirmação dos nós
-    private Map<String, Timer> nodeTimers = new HashMap<>(); // Armazena temporizadores para cada nó
-    private Set<String> nodesRegistrados = new HashSet<>(); // Conjunto de nós registrados
+    private static final String     MULTICAST_ADDRESS = "230.0.0.0";
+    private static final int        PORT = 4446;
+    private Map<Integer, String>    documentosAtualizados = new HashMap<>();
+    private Map<Integer, String>    documentosPendentes = new HashMap<>();
+    private Map<String, Long>       ultimoHeartbeat = new HashMap<>();
+    private Map<String, Timer>      nodeTimers = new HashMap<>();
+    private Set<String>             nodesRegistados = new HashSet<>();
+    private Set<String>             ackNodes = new HashSet<>();
+    private boolean                 atualizacaoConfirmada = false;
+    private int                     totalNodes = 3;
+
 
     // Construtor do Leader
     public Leader() throws RemoteException {
         super();
-        documentosAtualizados.put(1, "documento inicial");
-        System.out.println("Líder inicializado com o documento ID=1, Conteúdo='documento inicial'.");
-    }
 
-    @Override
-    public void simularFalhaNode(String nodeId) throws RemoteException {
-        System.out.println("Líder: Solicitada simulação de falha no nó: " + nodeId);
-        if (nodesRegistrados.contains(nodeId)) {
-            System.out.println("Simulando falha no nó: " + nodeId);
-            // Reinicia o temporizador do nó para simular uma falha atrasando o envio do heartbeat
-            if (nodeTimers.containsKey(nodeId)) {
-                nodeTimers.get(nodeId).cancel();
+        Timer timerVerificacao = new Timer();
+        timerVerificacao.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                verificarNosInativos();
             }
-            Timer timer = new Timer();
-            timer.schedule(new TimerTask() {
-                @Override
-                public void run() {
-                    System.out.println("Nó " + nodeId + " não respondeu a tempo. Removendo-o.");
-                    removerNo(nodeId);
-                    enviarMensagemShutdown(nodeId);
-                }
-            }, 35000); // Timeout de 35 segundos para simular a falha
+        }, 0, 10000);
+       }
 
-            nodeTimers.put(nodeId, timer);
-        } else {
-            System.out.println("Nó " + nodeId + " não encontrado.");
-        }
-    }
 
     @Override
-    public void registrarNo(String nodeId) throws RemoteException {
-        if (!nodesRegistrados.contains(nodeId)) {
-            nodesRegistrados.add(nodeId);
-            System.out.println("Líder: Nó registrado com sucesso: " + nodeId);
-        } else {
-            System.out.println("Líder: O nó " + nodeId + " já está registrado.");
+    public void registarNo(String nodeId) throws RemoteException {
+        if (!nodesRegistados.contains(nodeId)) {
+            nodesRegistados.add(nodeId);
         }
     }
 
-
-    // Método para remover um nó do sistema
+    // Metodo para remover um nó do sistema
     private void removerNo(String nodeId) {
-        nodesRegistrados.remove(nodeId);
+        nodesRegistados.remove(nodeId);
         nodeTimers.remove(nodeId);
-        System.out.println("Líder: Nó removido do sistema: " + nodeId);
+        System.out.println("Nó " + nodeId + " removido do sistema.");
     }
 
-    // Método para enviar mensagem de desligamento para um nó
+    // Metodo para enviar mensagem de shutdown para um nó
     private void enviarMensagemShutdown(String nodeId) {
-        System.out.println("Líder: Enviando mensagem de desligamento para o nó: " + nodeId);
-        // Lógica para enviar a mensagem de desligamento
+        try {
+            DatagramSocket socket = new DatagramSocket();
+            InetAddress group = InetAddress.getByName(MULTICAST_ADDRESS);
+            String mensagem = "SHUTDOWN: " + nodeId;
+            byte[] buffer = mensagem.getBytes();
+            DatagramPacket packet = new DatagramPacket(buffer, buffer.length, group, PORT);
+            socket.send(packet);
+            System.out.println("Mensagem de shutdown enviada para o nó " + nodeId);
+            socket.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -95,15 +81,14 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
         if (!documentosAtualizados.containsKey(docId)) {
             // Documento ainda não foi atualizado, adiciona aos pendentes
             documentosPendentes.put(docId, conteudo);
-            System.out.println("Documento pendente adicionado: ID=" + docId + ", Conteúdo=" + conteudo);
+            System.out.println("Documento pendente adicionado: ID = " + docId + ", Conteúdo = " + conteudo);
 
             // Enviar atualização para os nós
             enviarAtualizacaoParaNos();
         } else {
-            System.out.println("Documento com ID=" + docId + " já foi atualizado.");
+            System.out.println("Documento com ID = " + docId + " já foi atualizado.");
         }
     }
-
 
     @Override
     public String listarDocumentosAtualizados() throws RemoteException {
@@ -116,12 +101,12 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
 
     @Override
     public void verificarHeartbeats(String nodeId) throws RemoteException {
-        if (!nodesRegistrados.contains(nodeId)) {
-            System.out.println("Heartbeat recebido de nó não registrado: " + nodeId + ". Ignorando.");
+        if (!nodesRegistados.contains(nodeId)) {
+            System.out.println("HEARTBEAT recebido de nó não registado: " + nodeId + ". Ignorado.");
             return;
         }
 
-        System.out.println("Líder recebeu HEARTBEAT do nó: " + nodeId);
+        ultimoHeartbeat.put(nodeId, System.currentTimeMillis()); // Atualiza o último heartbeat
 
         // Reinicia o timer do nó sempre que receber um heartbeat
         if (nodeTimers.containsKey(nodeId)) {
@@ -132,7 +117,7 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
         timer.schedule(new TimerTask() {
             @Override
             public void run() {
-                System.out.println("Nó " + nodeId + " não respondeu a tempo. Removendo-o.");
+                System.out.println("Nó " + nodeId + " não respondeu a tempo. A remover...");
                 removerNo(nodeId);
                 enviarMensagemShutdown(nodeId);
             }
@@ -141,13 +126,10 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
         nodeTimers.put(nodeId, timer);
         ackNodes.add(nodeId); // Armazena o nó que enviou o HEARTBEAT
 
-        // Verifica se todos os nós enviaram HEARTBEAT
+//        // Verifica se todos os nós enviaram HEARTBEAT
         if (ackNodes.size() >= totalNodes) {
-            System.out.println("Todos os nós enviaram HEARTBEAT. Atualização confirmada.");
             atualizacaoConfirmada = true;
-            ackNodes.clear(); // Limpa os ACKs para a próxima rodada de atualizações
-        } else {
-            System.out.println("Aguardando mais HEARTBEATs. Total recebido: " + ackNodes.size());
+            ackNodes.clear(); // Limpa os ACKs para a próxima atualização
         }
     }
 
@@ -158,7 +140,7 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
             DatagramSocket socket = new DatagramSocket();
             InetAddress group = InetAddress.getByName(MULTICAST_ADDRESS);
 
-            // Montar a mensagem com os documentos pendentes
+            // Mensagem com os documentos pendentes
             StringBuilder mensagem = new StringBuilder("PENDENTES;");
             documentosPendentes.forEach((id, conteudo) ->
                     mensagem.append(id).append(":").append(conteudo).append(";"));
@@ -174,17 +156,16 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
         }
     }
 
-
     // Recebe ACKs dos nós via RMI
     @Override
-    public synchronized void enviarACK(String nodeId) throws RemoteException {
+    public synchronized void receberACK(String nodeId) throws RemoteException {
         if (!atualizacaoConfirmada) {
             ackNodes.add(nodeId);
-            System.out.println("Líder recebeu ACK do nó: " + nodeId);
+            System.out.println("Líder recebeu ACK do nó " + nodeId);
 
             // Verificar se a maioria dos nós enviaram ACK
             if (ackNodes.size() > totalNodes / 2) {
-                System.out.println("A maioria dos nós confirmaram a atualização. Enviando commit...");
+                System.out.println("A maioria dos nós confirmaram a atualização. A enviar commit...");
                 enviarCommitParaNos();
                 atualizacaoConfirmada = true; // Marcar atualização como confirmada
                 ackNodes.clear(); // Limpar os ACKs para a próxima atualização
@@ -206,7 +187,6 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
             // Atualizar os documentos pendentes como atualizados
             for (Map.Entry<Integer, String> entry : documentosPendentes.entrySet()) {
                 documentosAtualizados.put(entry.getKey(), entry.getValue());
-                System.out.println("Documento atualizado: ID=" + entry.getKey() + ", Conteúdo=" + entry.getValue());
             }
             documentosPendentes.clear(); // Limpa a lista de pendentes
 
@@ -216,12 +196,12 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
         }
     }
 
-    // Envia a lista das atualizações ao novo nó que se juntou
+    // Envia a lista das atualizações ao novo nó
     @Override
     public String solicitarListaAtualizacoes(String nodeId) throws RemoteException {
-        System.out.println("Líder recebeu solicitação de sincronização do nó: " + nodeId);
+        System.out.println("Líder recebeu solicitação de sincronização do nó " + nodeId);
 
-        // Construir uma lista com todos os documentos atualizados
+        // Lista com todos os documentos atualizados
         StringBuilder listaAtualizada = new StringBuilder();
         documentosAtualizados.forEach((id, conteudo) ->
                 listaAtualizada.append(id).append(":").append(conteudo).append(";"));
@@ -229,4 +209,27 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
         return listaAtualizada.toString();
     }
 
+
+    public void notificarFalha(String nodeId) throws RemoteException {
+        if (nodesRegistados.contains(nodeId)) {
+            nodesRegistados.remove(nodeId); // Remove o nó da lista de ativos
+            System.out.println("Nó " + nodeId + " foi removido da lista de nós ativos.");
+        } else {
+            System.out.println("Nó " + nodeId + " já não estava ativo.");
+        }
+    }
+
+
+    private void verificarNosInativos() {
+        long timeout = 30000; // 30 segundos
+        long agora = System.currentTimeMillis();
+
+        for (String nodeId : new HashSet<>(nodesRegistados)) {
+            if (ultimoHeartbeat.containsKey(nodeId) && (agora - ultimoHeartbeat.get(nodeId) > timeout)) {
+                System.out.println("Nó " + nodeId + " não respondeu a tempo. A remover...");
+                removerNo(nodeId);
+                enviarMensagemShutdown(nodeId);
+            }
+        }
+    }
 }

@@ -4,71 +4,54 @@ import java.util.Scanner;
 public class Client {
     public static void main(String[] args) {
         try {
-            // Obtém a referência do objeto remoto (líder) via RMI
             SystemInterface leader = (SystemInterface) Naming.lookup("rmi://localhost/Leader");
 
             Scanner scanner = new Scanner(System.in);
 
             while (true) {
-                limparTela(); // Limpa a tela antes de exibir o menu
-                // Exibe o menu para o usuário
-                System.out.println("Bem-vindo ao Cliente. Escolha uma opção:");
+                limparTela();
+
+                System.out.println("Bem vindo. Escolha uma opção:");
                 System.out.println("1 - Enviar uma nova atualização ao líder");
                 System.out.println("2 - Listar documentos atualizados no líder");
-                System.out.println("3 - Simular falha em um nó");
-                System.out.println("4 - Sair");
+                System.out.println("3 - Sair");
                 System.out.print("Opção: ");
 
                 int opcao = scanner.nextInt();
-                scanner.nextLine(); // Consumir o caractere de nova linha
+                scanner.nextLine();
 
                 switch (opcao) {
                     case 1:
-                        // Enviar uma nova mensagem (documento) ao líder
                         limparTela();
                         System.out.print("Digite o ID do documento: ");
                         int docId = scanner.nextInt();
-                        scanner.nextLine(); // Consumir o caractere de nova linha
+                        scanner.nextLine();
 
                         System.out.print("Digite o conteúdo do documento: ");
                         String conteudo = scanner.nextLine();
 
                         String mensagem = docId + ";" + conteudo;
                         leader.enviarMensagem(mensagem);
-                        System.out.println("\nCliente: Mensagem enviada ao líder: " + mensagem);
-                        pausar(); // Pausar antes de retornar ao menu
+                        System.out.println("\nMensagem enviada ao líder: " + mensagem);
+                        pausar();
                         break;
 
                     case 2:
-                        // Solicitar a lista de documentos atualizados
                         limparTela();
                         System.out.println("Obtendo lista de documentos atualizados do líder...");
                         String documentos = leader.listarDocumentosAtualizados();
                         System.out.println("Documentos atualizados:\n" + documentos);
-                        pausar(); // Pausar antes de retornar ao menu
+                        pausar();
                         break;
-
-
 
                     case 3:
-                        // Solicitar a simulação de falha em um nó
-                        limparTela();
-                        System.out.print("Digite o ID do nó para simular falha: ");
-                        String falhaNodeId = scanner.nextLine();
-                        leader.simularFalhaNode(falhaNodeId);
-                        System.out.println("\nCliente: Solicitada simulação de falha no nó: " + falhaNodeId);
-                        pausar(); // Pausar antes de retornar ao menu
-                        break;
-
-                    case 4:
-                        // Sair do programa
-                        System.out.println("Encerrando o cliente...");
+                        System.out.println("Encerrando...");
                         scanner.close();
                         return;
 
                     default:
                         System.out.println("Opção inválida! Tente novamente.");
-                        pausar(); // Pausar antes de retornar ao menu
+                        pausar();
                         break;
                 }
             }
@@ -77,7 +60,7 @@ public class Client {
         }
     }
 
-    // Método para limpar a tela
+
     public static void limparTela() {
         try {
             if (System.getProperty("os.name").contains("Windows")) {
@@ -91,7 +74,7 @@ public class Client {
         }
     }
 
-    // Método para pausar a execução
+
     public static void pausar() {
         System.out.println("\nPressione Enter para continuar...");
         Scanner scanner = new Scanner(System.in);
