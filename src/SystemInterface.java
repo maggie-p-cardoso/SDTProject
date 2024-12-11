@@ -8,11 +8,9 @@ public interface SystemInterface extends Remote {
 
     String solicitarListaAtualizacoes(String nodeId) throws RemoteException;
 
-    void verificarHeartbeats(String nodeId) throws RemoteException;
+    void processarACK(String nodeId) throws RemoteException;
 
     String listarDocumentosAtualizados() throws RemoteException;
 
     void registarNo(String nodeId) throws RemoteException;
-
-    void notificarFalha(String nodeId) throws RemoteException;
 }

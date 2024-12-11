@@ -15,7 +15,7 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
     private static final int        PORT = 4446;
     private Map<Integer, String>    documentosAtualizados = new HashMap<>();
     private Map<Integer, String>    documentosPendentes = new HashMap<>();
-    private Map<String, Long>       ultimoHeartbeat = new HashMap<>();
+    private Map<String, Long>       ultimoACK = new HashMap<>();
     private Map<String, Timer>      nodeTimers = new HashMap<>();
     private Set<String>             nodesRegistados = new HashSet<>();
     private Set<String>             ackNodes = new HashSet<>();
@@ -27,14 +27,31 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
     public Leader() throws RemoteException {
         super();
 
-        Timer timerVerificacao = new Timer();
-        timerVerificacao.scheduleAtFixedRate(new TimerTask() {
+        Timer heartbeatTimer = new Timer();
+        heartbeatTimer.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {
-                verificarNosInativos();
+                enviarHeartbeatParaNos();
             }
-        }, 0, 10000);
-       }
+        }, 0, 5000);
+    }
+
+    private void enviarHeartbeatParaNos() {
+        try {
+            DatagramSocket socket = new DatagramSocket();
+            InetAddress group = InetAddress.getByName(MULTICAST_ADDRESS);
+
+            String mensagem = "HEARTBEAT";
+            byte[] buffer = mensagem.getBytes();
+            DatagramPacket packet = new DatagramPacket(buffer, buffer.length, group, PORT);
+            socket.send(packet);
+
+            System.out.println("Líder enviou heartbeat para os nós.");
+            socket.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
 
     @Override
@@ -49,22 +66,6 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
         nodesRegistados.remove(nodeId);
         nodeTimers.remove(nodeId);
         System.out.println("Nó " + nodeId + " removido do sistema.");
-    }
-
-    // Metodo para enviar mensagem de shutdown para um nó
-    private void enviarMensagemShutdown(String nodeId) {
-        try {
-            DatagramSocket socket = new DatagramSocket();
-            InetAddress group = InetAddress.getByName(MULTICAST_ADDRESS);
-            String mensagem = "SHUTDOWN: " + nodeId;
-            byte[] buffer = mensagem.getBytes();
-            DatagramPacket packet = new DatagramPacket(buffer, buffer.length, group, PORT);
-            socket.send(packet);
-            System.out.println("Mensagem de shutdown enviada para o nó " + nodeId);
-            socket.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 
     @Override
@@ -100,39 +101,37 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
     }
 
     @Override
-    public void verificarHeartbeats(String nodeId) throws RemoteException {
+    public void processarACK(String nodeId) throws RemoteException {
         if (!nodesRegistados.contains(nodeId)) {
-            System.out.println("HEARTBEAT recebido de nó não registado: " + nodeId + ". Ignorado.");
             return;
         }
 
-        ultimoHeartbeat.put(nodeId, System.currentTimeMillis()); // Atualiza o último heartbeat
+        ultimoACK.put(nodeId, System.currentTimeMillis()); // Atualiza o último heartbeat
 
-        // Reinicia o timer do nó sempre que receber um heartbeat
+        // Reinicia o timer do nó sempre que receber um ack
         if (nodeTimers.containsKey(nodeId)) {
             nodeTimers.get(nodeId).cancel();
         }
 
         Timer timer = new Timer();
         timer.schedule(new TimerTask() {
-            @Override
-            public void run() {
-                System.out.println("Nó " + nodeId + " não respondeu a tempo. A remover...");
-                removerNo(nodeId);
-                enviarMensagemShutdown(nodeId);
+           @Override
+           public void run() {
+               System.out.println("Nó " + nodeId + " não respondeu a tempo. A remover...");
+               removerNo(nodeId);
             }
-        }, 30000); // Timeout de 30 segundos
+        }, 30000);
 
         nodeTimers.put(nodeId, timer);
-        ackNodes.add(nodeId); // Armazena o nó que enviou o HEARTBEAT
+        ackNodes.add(nodeId); // Armazena o nó que enviou o ACK
 
-//        // Verifica se todos os nós enviaram HEARTBEAT
+        // Verifica se todos os nós enviaram ACK
         if (ackNodes.size() >= totalNodes) {
             atualizacaoConfirmada = true;
             ackNodes.clear(); // Limpa os ACKs para a próxima atualização
         }
-    }
 
+    }
 
     // Envia atualização para os nós via multicast
     private void enviarAtualizacaoParaNos() {
@@ -207,29 +206,5 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
                 listaAtualizada.append(id).append(":").append(conteudo).append(";"));
 
         return listaAtualizada.toString();
-    }
-
-
-    public void notificarFalha(String nodeId) throws RemoteException {
-        if (nodesRegistados.contains(nodeId)) {
-            nodesRegistados.remove(nodeId); // Remove o nó da lista de ativos
-            System.out.println("Nó " + nodeId + " foi removido da lista de nós ativos.");
-        } else {
-            System.out.println("Nó " + nodeId + " já não estava ativo.");
-        }
-    }
-
-
-    private void verificarNosInativos() {
-        long timeout = 30000; // 30 segundos
-        long agora = System.currentTimeMillis();
-
-        for (String nodeId : new HashSet<>(nodesRegistados)) {
-            if (ultimoHeartbeat.containsKey(nodeId) && (agora - ultimoHeartbeat.get(nodeId) > timeout)) {
-                System.out.println("Nó " + nodeId + " não respondeu a tempo. A remover...");
-                removerNo(nodeId);
-                enviarMensagemShutdown(nodeId);
-            }
-        }
     }
 }
