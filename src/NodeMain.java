@@ -1,14 +1,13 @@
-public class NodeMain {
-    public static void main(String[] args) {
-        String  nodeId      = args[0];
-        Node    node        = new Node(nodeId);
-        Thread  nodeThread  = new Thread(node);
 
-        if (args.length != 1) {
-            System.out.println("Uso: java NodeMain <NodeID>");
-            return;
-        }
-
-        nodeThread.start();
-    }
-}
+ public class NodeMain {
+     public static void main(String[] args) {
+         try {
+             String id = args.length > 0 ? args[0] : "default_node";
+             System.out.println("Nó iniciado com ID: " + id);
+             Node node = new Node(id);
+             node.run();
+         } catch (Exception e) {
+             e.printStackTrace();
+         }
+     }
+ }

@@ -58,13 +58,25 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
     public void registarNo(String nodeId) throws RemoteException {
         if (!nodesRegistados.contains(nodeId)) {
             nodesRegistados.add(nodeId);
+            atualizarTotalNodes();
+            System.out.println("Nó " + nodeId + " registrado no líder com sucesso.");
+        }else {
+            System.out.println("Nó já registrado: " + nodeId);
         }
     }
 
+    public synchronized void atualizarTotalNodes() {
+        totalNodes = nodesRegistados.size();
+
+    }
     // Metodo para remover um nó do sistema
     private void removerNo(String nodeId) {
         nodesRegistados.remove(nodeId);
-        nodeTimers.remove(nodeId);
+        //nodeTimers.remove(nodeId);
+        Timer timer = nodeTimers.remove(nodeId);
+        if (timer != null) {
+            timer.cancel();
+        }
         System.out.println("Nó " + nodeId + " removido do sistema.");
     }
 
@@ -106,7 +118,7 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
             return;
         }
 
-        ultimoACK.put(nodeId, System.currentTimeMillis()); // Atualiza o último heartbeat
+        ultimoACK.put(nodeId, System.currentTimeMillis()); // Atualiza o último ack
 
         // Reinicia o timer do nó sempre que receber um ack
         if (nodeTimers.containsKey(nodeId)) {
@@ -207,4 +219,6 @@ public class Leader extends UnicastRemoteObject implements SystemInterface {
 
         return listaAtualizada.toString();
     }
+
+
 }

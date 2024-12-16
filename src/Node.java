@@ -1,7 +1,6 @@
-import java.net.DatagramPacket;
-import java.net.InetAddress;
-import java.net.MulticastSocket;
-import java.net.SocketTimeoutException;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.net.*;
 import java.rmi.Naming;
 import java.util.*;
 
@@ -16,16 +15,87 @@ public class Node implements Runnable {
     private Timer                       nodeTimer;
     private String                      id;
     private SystemInterface             leader;
+    private Timer                       lidervivo;
+    private boolean liderAtivo = true;
 
 
-    //Construtor do Node
+    private void configurarGestaoDeHeartbeats() {
+        lidervivo = new Timer();
+        lidervivo.schedule(new TimerTask() {
+            @Override
+            public void run() {
+               // System.out.println("Falha detectada: Líder não enviou heartbeat a tempo!");
+                liderFalhou();
+            }
+        }, 15000); // Timeout de 15 segundos
+    }
+
+    private void liderFalhou() {
+        System.out.println("Nó " + id + " detetou que o líder falhou.");
+        liderAtivo = false;
+
+
+        String voto = "Nó " + id + " votou: Nó " + id; // Exemplo de voto
+
+        try (Socket socket = new Socket("localhost", 5000); // Conecta ao ServerSetup
+             PrintWriter out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true)) {
+            out.println(voto);
+        } catch (Exception e) {
+            System.err.println("Erro ao enviar voto ao ServerSetup.");
+            e.printStackTrace();
+        }
+    }
+
     public Node(String id) {
         this.id = id;
         this.ativo = true;
+
+        while (leader == null) {
+            try {
+                leader = (SystemInterface) Naming.lookup("rmi://localhost/Leader");
+                System.out.println("Nó " + id + " conectado ao líder com sucesso.");
+            } catch (Exception e) {
+                System.err.println("Erro ao conectar ao líder. Tentando novamente em 5 segundos...");
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException ex) {
+                    ex.printStackTrace();
+                }
+            }
+        }
+
+        verificarLiderPeriodicamente(); // Monitorar reconexão com o líder
+    }
+
+    private void verificarLiderPeriodicamente() {
+        new Timer().scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                if (!liderAtivo || leader == null) {
+                    try {
+                        leader = (SystemInterface) Naming.lookup("rmi://localhost/Leader");
+                        liderAtivo = true;
+                        System.out.println("Nó " + id + " conectado ao novo líder com sucesso.");
+                        leader.registarNo(id);
+                        reiniciarConexaoMulticast();
+                    } catch (Exception e) {
+                        System.err.println("Erro ao conectar ao líder. Líder ainda está offline.");
+                        liderAtivo = false;
+                    }
+                }
+            }
+        }, 0, 5000); // Verifica a cada 5 segundos
+    }
+
+    private void reiniciarConexaoMulticast() {
         try {
-            leader = (SystemInterface) Naming.lookup("rmi://localhost/Leader");
-            leader.registarNo(id);
+            System.out.println("Nó " + id + " a reinicar conexão multicast...");
+            MulticastSocket socket = new MulticastSocket(PORT);
+            InetAddress group = InetAddress.getByName(MULTICAST_ADDRESS);
+            socket.joinGroup(group);
+            System.out.println("Nó " + id + " entrou no grupo multicast com sucesso.");
         } catch (Exception e) {
+            System.err.println("Erro ao reiniciar conexão multicast.");
             e.printStackTrace();
         }
     }
@@ -53,12 +123,17 @@ public class Node implements Runnable {
 
 
     private void confirmarAtividade() {
+        if (!liderAtivo) {
+            System.out.println("Líder está offline. Nó " + id + " não enviará ACK.");
+            return;
+        }
         try {
-            if (ativo) {
+            if (leader != null) {
                 leader.processarACK(id);
+                System.out.println("Nó " + id + " enviou ACK ao líder.");
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            liderAtivo = false; // Atualiza o estado do líder como inativo
         }
     }
 
@@ -73,14 +148,18 @@ public class Node implements Runnable {
 
             sincronizarComLider(); // Sincroniza com o líder ao inicializar
 
-            // Inicia o temporizador para enviar acks ao líder
+            configurarGestaoDeHeartbeats(); // Configura o timer de heartbeat
+
+            // Inicia o timer para enviar ACKs ao líder
             nodeTimer = new Timer();
             nodeTimer.scheduleAtFixedRate(new TimerTask() {
                 @Override
                 public void run() {
                     confirmarAtividade();
+
                 }
             }, 0, 10000);
+
 
             while (ativo) {
                 try {
@@ -88,20 +167,27 @@ public class Node implements Runnable {
                     byte[] buffer = new byte[256];
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
 
-                    // Define um timeout para garantir que o loop verifica o estado ativo periodicamente
-                    socket.setSoTimeout(1000); // Timeout de 1 segundo
                     socket.receive(packet);
-                    String mensagem = new String(packet.getData(), 0, packet.getLength());
 
+                    String mensagem = new String(packet.getData(), 0, packet.getLength());
                     if (mensagem.equals("HEARTBEAT")) {
                         System.out.println("Nó " + id + " recebeu heartbeat do líder.");
+                        liderAtivo = true; // Marca o líder como ativo
+                        if (lidervivo != null) {
+                            lidervivo.cancel(); // Cancela o timer atual
+                            configurarGestaoDeHeartbeats(); // Reinicia o timer
+                        }
                     } else if (mensagem.startsWith("PENDENTES;")) {
+                        System.out.println("Nó " + id + " recebeu mensagens PENDENTES do líder.");
                         processarPendentes(mensagem);
                     } else if (mensagem.equals("COMMIT")) {
+                        System.out.println("Nó " + id + " recebeu COMMIT do líder.");
                         aplicarCommit();
                     }
                 } catch (SocketTimeoutException e) {
-                    // Timeout é esperado, apenas permite verificar o estado 'ativo'
+                    if (!liderAtivo) {
+                        System.out.println("Líder ainda está offline. Nó " + id + " está a aguardar...");
+                    }
                 }
             }
         } catch (Exception e) {

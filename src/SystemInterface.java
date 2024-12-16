@@ -13,4 +13,7 @@ public interface SystemInterface extends Remote {
     String listarDocumentosAtualizados() throws RemoteException;
 
     void registarNo(String nodeId) throws RemoteException;
+
+
+
 }
